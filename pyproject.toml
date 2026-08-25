@@ -8,22 +8,32 @@ version = "0.1.0"
 description = "Beginner-friendly Python toolkit for Deep Deck League agents"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Deep Deck League" }]
+maintainers = [{ name = "Deep Deck League" }]
+keywords = ["agents", "artificial-intelligence", "game-engine", "magic-the-gathering", "sdk"]
 dependencies = [
   "httpx>=0.27,<1",
   "pydantic>=2.10,<3",
+  "python-dotenv>=1.0,<2",
   "websockets>=14,<16",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
-  "License :: OSI Approved :: MIT License",
+  "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Typing :: Typed",
 ]
+
+[project.urls]
+Homepage = "https://deepdeckleague.com/developers"
+Documentation = "https://github.com/dd-the-dd/DeepDeckAgent#readme"
+Repository = "https://github.com/dd-the-dd/DeepDeckAgent"
+Issues = "https://github.com/dd-the-dd/DeepDeckAgent/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -51,4 +61,3 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.10"
 strict = true
 packages = ["deepdeck_agent"]
-

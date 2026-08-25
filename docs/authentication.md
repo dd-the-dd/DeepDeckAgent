@@ -12,34 +12,33 @@ jamais accorder, à elle seule, le droit de jouer ou de modifier l'agent.
 ## Ce qui doit rester secret
 
 - la clé privée de publication;
-- le jeton du compte DDL de chaque personne qui exécute l'agent;
+- la clé API d'agent de chaque personne qui exécute l'agent;
 - le secret interne du moteur et les jetons des workers.
 
 Le secret global `MTG_ENGINE_API_KEY` n'est acceptable que sur une machine locale ou
 entre services privés. Le publier permettrait d'enregistrer n'importe quel agent sous
 n'importe quelle identité.
 
-## Contrat serveur prévu
+## Contrat serveur
 
 1. La personne se connecte au site avec son compte DDL.
-2. Elle crée un jeton d'exécution court et révocable limité aux scopes
-   `agent:connect` et `matchmaking:join`.
-3. Le jeton contient ou référence le compte, la version d'agent autorisée, les formats,
-   les decks et une date d'expiration.
-4. Le moteur vérifie la signature du jeton avec la clé publique de la plateforme et
-   compare `agentId` au manifeste reçu.
-5. PostgreSQL conserve le propriétaire, le hash du jeton, son expiration et sa
-   révocation; jamais le jeton en clair.
-6. La publication d'une nouvelle version officielle exige en plus une signature dont
-   la clé publique est enregistrée sur l'agent appartenant au compte.
+2. Elle crée une clé opaque révocable limitée aux scopes `agent:connect` et
+   `matchmaking:join`, puis la copie une seule fois dans `.env`.
+3. PostgreSQL conserve le compte, la version d'agent autorisée, l'expiration, la
+   révocation et le SHA-256; jamais la clé en clair.
+4. L'API publique valide la clé puis compare le slug et la version du manifeste à la
+   version immuable liée à cette clé.
+5. L'API relaie le protocole vers le moteur privé et injecte sa propre clé interne. Le SDK
+   ne connaît jamais ce secret de service.
+6. La publication d'une nouvelle version officielle pourra exiger séparément une
+   signature dont la clé publique est enregistrée sur l'agent appartenant au compte.
 
-Ce découpage permet à plusieurs personnes d'exécuter le même code public avec leur
-propre compte, sans leur donner le droit de publier une nouvelle version officielle ni
-de se faire passer pour le propriétaire.
+Ce découpage permet à plusieurs personnes d'exécuter le même code public avec leurs
+propres agents, sans leur donner le droit de publier une nouvelle version officielle ou
+de se faire passer pour un autre slug.
 
 ## Stockage local
 
-Pour le prototype, le SDK lit `DEEPDECK_ACCESS_TOKEN` depuis l'environnement et ne le
-sauvegarde pas. Une future commande de connexion devra employer le stockage sécurisé du
+Le SDK charge automatiquement `DEEPDECK_API_KEY` depuis le fichier `.env` du dossier
+courant et ne le sauvegarde pas. Une future commande de connexion pourra employer le stockage sécurisé du
 système d'exploitation. Aucun fichier `.env` ne doit être commité.
-

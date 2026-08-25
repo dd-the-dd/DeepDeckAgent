@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass, field
 from enum import Enum
 
+from dotenv import find_dotenv, load_dotenv
+
 from .protocol import (
     AgentAuthor,
     AgentCapabilities,
@@ -32,6 +34,12 @@ class PlaySpeed(str, Enum):
             PlaySpeed.SECOND_1: TimeoutCategory.STANDARD,
             PlaySpeed.SECONDS_10: TimeoutCategory.EXTENDED,
         }[self]
+
+
+def _load_working_directory_dotenv() -> None:
+    dotenv_path = find_dotenv(usecwd=True)
+    if dotenv_path:
+        load_dotenv(dotenv_path)
 
 
 @dataclass(frozen=True)
@@ -134,6 +142,7 @@ class ServerTarget:
         *,
         api_key: str | None = None,
     ) -> ServerTarget:
+        _load_working_directory_dotenv()
         http_url = engine_url.rstrip("/")
         websocket_scheme = "wss" if http_url.startswith("https://") else "ws"
         host = http_url.split("://", 1)[-1]
@@ -150,21 +159,30 @@ class ServerTarget:
         *,
         agent_url: str | None = None,
         platform_url: str | None = None,
+        api_key: str | None = None,
         account_token: str | None = None,
     ) -> ServerTarget:
+        _load_working_directory_dotenv()
+        resolved_platform_url = (
+            platform_url
+            or os.getenv("DEEPDECK_PLATFORM_URL")
+            or "https://staging.deepdeckleague.com/api/v1"
+        ).rstrip("/")
         resolved_agent_url = agent_url or os.getenv("DEEPDECK_AGENT_URL", "").strip()
         if not resolved_agent_url:
-            raise ValueError(
-                "DEEPDECK_AGENT_URL is required until the public runner endpoint is deployed"
+            websocket_base = resolved_platform_url.replace("https://", "wss://", 1).replace(
+                "http://", "ws://", 1
             )
+            resolved_agent_url = f"{websocket_base}/agents/connect"
         return cls(
             kind="deepdeckleague",
             agent_url=resolved_agent_url,
-            platform_url=(
-                platform_url
-                or os.getenv("DEEPDECK_PLATFORM_URL")
-                or "https://staging.deepdeckleague.com/api/v1"
-            ).rstrip("/"),
-            account_token=account_token or os.getenv("DEEPDECK_ACCESS_TOKEN") or None,
+            platform_url=resolved_platform_url,
+            account_token=(
+                api_key
+                or account_token
+                or os.getenv("DEEPDECK_API_KEY")
+                or os.getenv("DEEPDECK_ACCESS_TOKEN")
+                or None
+            ),
         )
-

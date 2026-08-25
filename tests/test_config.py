@@ -46,3 +46,27 @@ def test_runner_controller_id_is_stable_before_connection() -> None:
     )
     runner = AgentRunner(Agent(), config, ServerTarget.local())
     assert runner.controller_id == "agent:org.example.agent"
+
+
+def test_public_target_derives_runner_url_and_reads_the_agent_key(monkeypatch) -> None:
+    monkeypatch.setenv("DEEPDECK_API_KEY", "ddl_agent_example")
+    monkeypatch.delenv("DEEPDECK_AGENT_URL", raising=False)
+    target = ServerTarget.deepdeckleague(
+        platform_url="https://staging.deepdeckleague.com/api/v1/"
+    )
+    assert target.agent_url == "wss://staging.deepdeckleague.com/api/v1/agents/connect"
+    assert target.account_token == "ddl_agent_example"
+
+
+def test_public_target_loads_agent_key_from_dotenv(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DEEPDECK_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPDECK_ACCESS_TOKEN", raising=False)
+    (tmp_path / ".env").write_text(
+        "DEEPDECK_API_KEY=ddl_agent_from_dotenv\n",
+        encoding="utf-8",
+    )
+
+    target = ServerTarget.deepdeckleague()
+
+    assert target.account_token == "ddl_agent_from_dotenv"

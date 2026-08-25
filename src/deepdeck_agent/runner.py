@@ -70,6 +70,7 @@ class AgentRunner:
     target: ServerTarget
     speed: PlaySpeed | None = None
     client: AgentClient = field(init=False)
+    matchmaking_ticket: dict[str, Any] | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         selected_speed = self.speed or self.config.speeds[0]
@@ -127,7 +128,7 @@ class AgentRunner:
         if self.target.kind != "deepdeckleague" or self.target.platform_url is None:
             raise ValueError("join_matchmaking requires ServerTarget.deepdeckleague()")
         if not self.target.account_token:
-            raise ValueError("DEEPDECK_ACCESS_TOKEN is required for account-owned matchmaking")
+            raise ValueError("DEEPDECK_API_KEY is required for account-owned matchmaking")
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
                 f"{self.target.platform_url}/matchmaking/tickets",
@@ -141,3 +142,88 @@ class AgentRunner:
             response.raise_for_status()
             payload = cast(dict[str, Any], response.json())
             return cast(dict[str, Any], payload.get("data", payload))
+
+    async def get_matchmaking_ticket(self, ticket_id: str) -> dict[str, Any]:
+        if self.target.kind != "deepdeckleague" or self.target.platform_url is None:
+            raise ValueError("get_matchmaking_ticket requires ServerTarget.deepdeckleague()")
+        if not self.target.account_token:
+            raise ValueError("DEEPDECK_API_KEY is required for account-owned matchmaking")
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(
+                f"{self.target.platform_url}/matchmaking/tickets/{ticket_id}",
+                headers={"Authorization": f"Bearer {self.target.account_token}"},
+            )
+            response.raise_for_status()
+            payload = cast(dict[str, Any], response.json())
+            return cast(dict[str, Any], payload.get("data", payload))
+
+    async def match(self, match_id: str) -> dict[str, Any]:
+        if self.target.kind != "deepdeckleague" or self.target.platform_url is None:
+            raise ValueError("match requires ServerTarget.deepdeckleague()")
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(f"{self.target.platform_url}/matches/{match_id}")
+            response.raise_for_status()
+            payload = cast(dict[str, Any], response.json())
+            return cast(dict[str, Any], payload.get("data", payload))
+
+    async def _wait_for_match_id(self, ticket: dict[str, Any], poll_seconds: float) -> str | None:
+        current = ticket
+        while True:
+            status = str(current.get("status", ""))
+            match_id = current.get("matchId")
+            if status == "matched" and isinstance(match_id, str):
+                return match_id
+            if status == "cancelled":
+                return None
+            await asyncio.sleep(poll_seconds)
+            current = await self.get_matchmaking_ticket(str(current["id"]))
+            self.matchmaking_ticket = current
+
+    async def _wait_for_match_end(self, match_id: str, poll_seconds: float) -> str:
+        while True:
+            match = await self.match(match_id)
+            status = str(match.get("status", ""))
+            if status in {"complete", "failed"}:
+                return status
+            await asyncio.sleep(poll_seconds)
+
+    async def serve_matchmaking(
+        self,
+        entry: MatchmakingEntry,
+        *,
+        retry_seconds: float = 2.0,
+        connection_timeout: float = 30.0,
+        continuous: bool = True,
+        poll_seconds: float = 5.0,
+        requeue_seconds: float = 2.0,
+    ) -> None:
+        """Connect, join DDL matchmaking, and keep serving decisions.
+
+        This is the convenient long-running entry point for a background process. The
+        matchmaking API is called only after the engine has accepted registration, so a
+        ticket can never point at an offline runner. By default, a completed or failed
+        match is followed by a fresh ticket; set ``continuous=False`` for one match.
+        """
+        if self.target.kind != "deepdeckleague":
+            raise ValueError("serve_matchmaking requires ServerTarget.deepdeckleague()")
+        connection = asyncio.create_task(self.serve(retry_seconds=retry_seconds))
+        try:
+            await asyncio.sleep(0)
+            await self.wait_until_connected(timeout=connection_timeout)
+            while True:
+                self.matchmaking_ticket = await self.join_matchmaking(entry)
+                match_id = await self._wait_for_match_id(
+                    self.matchmaking_ticket,
+                    poll_seconds,
+                )
+                if match_id is None:
+                    return
+                await self._wait_for_match_end(match_id, poll_seconds)
+                if not continuous:
+                    return
+                self.matchmaking_ticket = None
+                await asyncio.sleep(requeue_seconds)
+                await self.wait_until_connected(timeout=connection_timeout)
+        finally:
+            connection.cancel()
+            await asyncio.gather(connection, return_exceptions=True)
