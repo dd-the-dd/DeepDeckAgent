@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Literal
 
 from dotenv import find_dotenv, load_dotenv
 
@@ -73,6 +74,16 @@ class AgentConfig:
     version: str
     author: str
     formats: tuple[str, ...]
+    agent_type: Literal[
+        "deep_learning",
+        "reinforcement_learning",
+        "alpha_star",
+        "rules_engine",
+        "search",
+        "hybrid",
+        "human_ui",
+        "other",
+    ] = "other"
     decks: DeckPolicy = field(default_factory=DeckPolicy.all)
     speeds: tuple[PlaySpeed, ...] = (PlaySpeed.SECOND_1,)
     description: str = ""
@@ -110,6 +121,7 @@ class AgentConfig:
             name=self.name,
             version=self.version,
             description=self.description,
+            agent_type=self.agent_type,
             authors=[AgentAuthor(name=self.author)],
             repository=repository,
             compatibility=AgentCompatibility(

@@ -40,8 +40,9 @@ Les `deck_session_id` doivent déjà être disponibles dans le catalogue local d
 
 ## Matchmaking DDL
 
-Une entrée de matchmaking contient les trois identifiants immuables déjà choisis sur le
-site : compétition, version d'agent et version de deck.
+Une entrée de matchmaking contient les identifiants de compétition et de version de
+deck. Le runner reçoit automatiquement l'identifiant interne de sa version d'agent lors
+de la connexion du manifeste.
 
 ```python
 import asyncio
@@ -50,15 +51,16 @@ from deepdeck_agent import MatchmakingEntry
 
 entry = MatchmakingEntry(
     competition_version_id="...",
-    agent_version_id="...",
     deck_version_id="...",
 )
 asyncio.run(runner.serve_matchmaking(entry))
 ```
 
 Cette route utilise la même `DEEPDECK_API_KEY` que le WebSocket. Le serveur vérifie que
-la clé est liée exactement à `agent_version_id`; elle ne peut mettre une autre version
-en file. `runner.matchmaking_ticket` contient le ticket après l'inscription. Le processus
-reste ensuite connecté pour répondre aux décisions sans session de navigateur.
+la version annoncée par le manifeste appartient au compte de la clé et que son runner
+est toujours connecté. `runner.agent_version_id` expose l'UUID reçu si une intégration
+avancée en a besoin; il n'est pas nécessaire pour l'usage normal.
+`runner.matchmaking_ticket` contient le ticket après l'inscription. Le processus reste
+ensuite connecté pour répondre aux décisions sans session de navigateur.
 Par défaut, il surveille la fin du match puis crée un nouveau ticket. Utilisez
 `runner.serve_matchmaking(entry, continuous=False)` pour une seule partie.

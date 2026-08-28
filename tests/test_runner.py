@@ -44,7 +44,7 @@ async def test_serve_matchmaking_connects_before_joining(monkeypatch) -> None:
         return "agent:example-agent"
 
     async def join_matchmaking(entry: MatchmakingEntry) -> dict[str, Any]:
-        assert entry.agent_version_id == "agent-version"
+        assert entry.deck_version_id == "deck-version"
         order.append("join")
         return {"id": "ticket", "status": "queued"}
 
@@ -66,7 +66,7 @@ async def test_serve_matchmaking_connects_before_joining(monkeypatch) -> None:
     monkeypatch.setattr(subject, "_wait_for_match_id", wait_for_match_id)
     monkeypatch.setattr(subject, "_wait_for_match_end", wait_for_match_end)
     await subject.serve_matchmaking(
-        MatchmakingEntry("competition", "agent-version", "deck-version"),
+        MatchmakingEntry("competition", "deck-version"),
         continuous=False,
     )
 
@@ -108,7 +108,7 @@ async def test_serve_matchmaking_requeues_after_match_completion(monkeypatch) ->
     monkeypatch.setattr(subject, "_wait_for_match_end", wait_for_match_end)
     task = asyncio.create_task(
         subject.serve_matchmaking(
-            MatchmakingEntry("competition", "agent-version", "deck-version"),
+            MatchmakingEntry("competition", "deck-version"),
             requeue_seconds=0,
         )
     )
@@ -119,3 +119,15 @@ async def test_serve_matchmaking_requeues_after_match_completion(monkeypatch) ->
         await task
 
     assert joins >= 2
+
+
+async def test_match_end_reads_the_public_match_summary(monkeypatch) -> None:
+    subject = runner()
+
+    async def match(match_id: str) -> dict[str, Any]:
+        assert match_id == "match"
+        return {"summary": {"status": "complete"}, "games": []}
+
+    monkeypatch.setattr(subject, "match", match)
+
+    assert await subject._wait_for_match_end("match", 0) == "complete"

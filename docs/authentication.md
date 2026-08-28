@@ -24,13 +24,16 @@ n'importe quelle identité.
 1. La personne se connecte au site avec son compte DDL.
 2. Elle crée une clé opaque révocable limitée aux scopes `agent:connect` et
    `matchmaking:join`, puis la copie une seule fois dans `.env`.
-3. PostgreSQL conserve le compte, la version d'agent autorisée, l'expiration, la
-   révocation et le SHA-256; jamais la clé en clair.
-4. L'API publique valide la clé puis compare le slug et la version du manifeste à la
-   version immuable liée à cette clé.
+3. PostgreSQL conserve le compte, l'expiration, la révocation et le SHA-256; jamais la
+   clé en clair. La clé n'est pas liée à un agent choisi dans le site.
+4. L'API publique valide la clé, puis crée ou met à jour sous ce compte l'agent et la
+   version décrits par le manifeste. Un slug appartenant à un autre compte est refusé.
 5. L'API relaie le protocole vers le moteur privé et injecte sa propre clé interne. Le SDK
    ne connaît jamais ce secret de service.
-6. La publication d'une nouvelle version officielle pourra exiger séparément une
+6. La plateforme retourne l'UUID de version au SDK après l'inscription; le développeur
+   ne le copie pas dans sa configuration de matchmaking. Une modification du comportement
+   ou des poids doit changer la version du manifeste.
+7. La publication d'une nouvelle version officielle pourra exiger séparément une
    signature dont la clé publique est enregistrée sur l'agent appartenant au compte.
 
 Ce découpage permet à plusieurs personnes d'exécuter le même code public avec leurs
