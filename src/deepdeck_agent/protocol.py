@@ -83,6 +83,16 @@ class AgentManifest(ProtocolModel):
     name: str = Field(min_length=1)
     version: str = Field(min_length=1)
     description: str = ""
+    agent_type: Literal[
+        "deep_learning",
+        "reinforcement_learning",
+        "alpha_star",
+        "rules_engine",
+        "search",
+        "hybrid",
+        "human_ui",
+        "other",
+    ] = "other"
     authors: list[AgentAuthor] = Field(min_length=1)
     repository: AgentRepository | None = None
     compatibility: AgentCompatibility
@@ -99,6 +109,8 @@ class RegistrationAccepted(ProtocolModel):
     decision_timeout_ms: int
     starting_analysis_timeout_ms: int
     game_sharing: GameSharing
+    agent_version_id: str | None = None
+    account_linked: bool = False
 
 
 class StartingSituationRequest(ProtocolModel):
@@ -176,4 +188,3 @@ class ProtocolError(ProtocolModel):
     request_id: str | None = None
     code: str
     message: str
-

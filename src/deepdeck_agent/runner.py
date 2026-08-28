@@ -59,7 +59,6 @@ class LocalGame:
 @dataclass(frozen=True)
 class MatchmakingEntry:
     competition_version_id: str
-    agent_version_id: str
     deck_version_id: str
 
 
@@ -95,6 +94,13 @@ class AgentRunner:
     def controller_id(self) -> str:
         return self.client.controller_id or f"agent:{self.config.agent_id}"
 
+    @property
+    def agent_version_id(self) -> str | None:
+        """Return the platform UUID assigned to the connected manifest, when available."""
+
+        registration = self.client.registration
+        return registration.agent_version_id if registration else None
+
     async def wait_until_connected(self, *, timeout: float = 10.0) -> str:
         """Wait until the engine confirms registration and return the controller ID."""
 
@@ -129,13 +135,18 @@ class AgentRunner:
             raise ValueError("join_matchmaking requires ServerTarget.deepdeckleague()")
         if not self.target.account_token:
             raise ValueError("DEEPDECK_API_KEY is required for account-owned matchmaking")
+        agent_version_id = self.agent_version_id
+        if not agent_version_id:
+            raise RuntimeError(
+                "the platform did not assign an agent version; connect the runner first"
+            )
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
                 f"{self.target.platform_url}/matchmaking/tickets",
                 headers={"Authorization": f"Bearer {self.target.account_token}"},
                 json={
                     "competitionVersionId": entry.competition_version_id,
-                    "agentVersionId": entry.agent_version_id,
+                    "agentVersionId": agent_version_id,
                     "deckVersionId": entry.deck_version_id,
                 },
             )
@@ -182,8 +193,13 @@ class AgentRunner:
     async def _wait_for_match_end(self, match_id: str, poll_seconds: float) -> str:
         while True:
             match = await self.match(match_id)
-            status = str(match.get("status", ""))
-            if status in {"complete", "failed"}:
+            summary = match.get("summary")
+            status = str(
+                summary.get("status", "")
+                if isinstance(summary, dict)
+                else match.get("status", "")
+            )
+            if status in {"complete", "failed", "cancelled"}:
                 return status
             await asyncio.sleep(poll_seconds)
 
