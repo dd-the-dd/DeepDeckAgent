@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -60,6 +61,7 @@ class LocalGame:
 class MatchmakingEntry:
     competition_version_id: str
     deck_version_id: str
+    client_seat_id: str | None = None
 
 
 @dataclass
@@ -148,6 +150,11 @@ class AgentRunner:
                     "competitionVersionId": entry.competition_version_id,
                     "agentVersionId": agent_version_id,
                     "deckVersionId": entry.deck_version_id,
+                    **(
+                        {"clientSeatId": entry.client_seat_id}
+                        if entry.client_seat_id is not None
+                        else {}
+                    ),
                 },
             )
             response.raise_for_status()
@@ -167,6 +174,18 @@ class AgentRunner:
             response.raise_for_status()
             payload = cast(dict[str, Any], response.json())
             return cast(dict[str, Any], payload.get("data", payload))
+
+    async def cancel_matchmaking_ticket(self, ticket_id: str) -> None:
+        if self.target.kind != "deepdeckleague" or self.target.platform_url is None:
+            raise ValueError("cancel_matchmaking_ticket requires ServerTarget.deepdeckleague()")
+        if not self.target.account_token:
+            raise ValueError("DEEPDECK_API_KEY is required for account-owned matchmaking")
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.delete(
+                f"{self.target.platform_url}/matchmaking/tickets/{ticket_id}",
+                headers={"Authorization": f"Bearer {self.target.account_token}"},
+            )
+            response.raise_for_status()
 
     async def match(self, match_id: str) -> dict[str, Any]:
         if self.target.kind != "deepdeckleague" or self.target.platform_url is None:
@@ -235,11 +254,17 @@ class AgentRunner:
                 if match_id is None:
                     return
                 await self._wait_for_match_end(match_id, poll_seconds)
+                self.matchmaking_ticket = None
                 if not continuous:
                     return
-                self.matchmaking_ticket = None
                 await asyncio.sleep(requeue_seconds)
                 await self.wait_until_connected(timeout=connection_timeout)
         finally:
+            if self.matchmaking_ticket is not None:
+                ticket_id = self.matchmaking_ticket.get("id")
+                if isinstance(ticket_id, str):
+                    with suppress(httpx.HTTPError):
+                        await self.cancel_matchmaking_ticket(ticket_id)
+                self.matchmaking_ticket = None
             connection.cancel()
             await asyncio.gather(connection, return_exceptions=True)
