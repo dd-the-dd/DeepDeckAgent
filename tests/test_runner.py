@@ -71,7 +71,44 @@ async def test_serve_matchmaking_connects_before_joining(monkeypatch) -> None:
     )
 
     assert order == ["serve", "connected", "join", "matched", "complete"]
-    assert subject.matchmaking_ticket == {"id": "ticket", "status": "queued"}
+    assert subject.matchmaking_ticket is None
+
+
+async def test_join_matchmaking_sends_the_client_seat_identity(monkeypatch) -> None:
+    subject = runner()
+    subject.client.registration = type(
+        "Registration",
+        (),
+        {"agent_version_id": "agent-version"},
+    )()
+    request: dict[str, Any] = {}
+
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, Any]:
+            return {"data": {"id": "ticket"}}
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def post(self, url: str, *, headers, json):
+            request.update({"url": url, "headers": headers, "json": json})
+            return Response()
+
+    monkeypatch.setattr("deepdeck_agent.runner.httpx.AsyncClient", lambda **kwargs: Client())
+
+    ticket = await subject.join_matchmaking(
+        MatchmakingEntry("competition", "deck-version", client_seat_id="learner:seat-2")
+    )
+
+    assert ticket == {"id": "ticket"}
+    assert request["json"]["clientSeatId"] == "learner:seat-2"
 
 
 async def test_serve_matchmaking_requeues_after_match_completion(monkeypatch) -> None:
@@ -101,11 +138,15 @@ async def test_serve_matchmaking_requeues_after_match_completion(monkeypatch) ->
         del match_id, poll_seconds
         return "complete"
 
+    async def cancel_matchmaking_ticket(ticket_id: str) -> None:
+        assert ticket_id.startswith("ticket-")
+
     monkeypatch.setattr(subject, "serve", serve)
     monkeypatch.setattr(subject, "wait_until_connected", wait_until_connected)
     monkeypatch.setattr(subject, "join_matchmaking", join_matchmaking)
     monkeypatch.setattr(subject, "_wait_for_match_id", wait_for_match_id)
     monkeypatch.setattr(subject, "_wait_for_match_end", wait_for_match_end)
+    monkeypatch.setattr(subject, "cancel_matchmaking_ticket", cancel_matchmaking_ticket)
     task = asyncio.create_task(
         subject.serve_matchmaking(
             MatchmakingEntry("competition", "deck-version"),
