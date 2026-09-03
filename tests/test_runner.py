@@ -109,6 +109,53 @@ async def test_join_matchmaking_sends_the_client_seat_identity(monkeypatch) -> N
 
     assert ticket == {"id": "ticket"}
     assert request["json"]["clientSeatId"] == "learner:seat-2"
+    assert request["json"]["deckVersionId"] == "deck-version"
+
+
+async def test_join_matchmaking_advertises_the_full_eligible_deck_pool(monkeypatch) -> None:
+    subject = runner()
+    subject.client.registration = type(
+        "Registration",
+        (),
+        {"agent_version_id": "agent-version"},
+    )()
+    request: dict[str, Any] = {}
+
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, Any]:
+            return {"data": {"id": "ticket"}}
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def post(self, url: str, *, headers, json):
+            request.update({"url": url, "headers": headers, "json": json})
+            return Response()
+
+    monkeypatch.setattr("deepdeck_agent.runner.httpx.AsyncClient", lambda **kwargs: Client())
+
+    await subject.join_matchmaking(
+        MatchmakingEntry(
+            "competition",
+            client_seat_id="learner:seat-1",
+            deck_version_ids=("deck-a", "deck-b", "deck-a"),
+        )
+    )
+
+    assert request["json"]["deckVersionIds"] == ["deck-a", "deck-b"]
+    assert "deckVersionId" not in request["json"]
+
+
+def test_matchmaking_entry_requires_at_least_one_deck() -> None:
+    with pytest.raises(ValueError, match="at least one eligible deck"):
+        MatchmakingEntry("competition").deck_payload()
 
 
 async def test_serve_matchmaking_requeues_after_match_completion(monkeypatch) -> None:
