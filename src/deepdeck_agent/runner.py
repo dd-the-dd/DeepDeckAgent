@@ -60,8 +60,23 @@ class LocalGame:
 @dataclass(frozen=True)
 class MatchmakingEntry:
     competition_version_id: str
-    deck_version_id: str
+    deck_version_id: str | None = None
     client_seat_id: str | None = None
+    deck_version_ids: tuple[str, ...] = ()
+
+    def deck_payload(self) -> dict[str, Any]:
+        pool = tuple(
+            dict.fromkeys(
+                deck_id
+                for deck_id in (*self.deck_version_ids, self.deck_version_id)
+                if deck_id is not None and deck_id.strip()
+            )
+        )
+        if not pool:
+            raise ValueError("matchmaking requires at least one eligible deck version")
+        if self.deck_version_ids:
+            return {"deckVersionIds": list(pool)}
+        return {"deckVersionId": pool[0]}
 
 
 @dataclass
@@ -149,7 +164,7 @@ class AgentRunner:
                 json={
                     "competitionVersionId": entry.competition_version_id,
                     "agentVersionId": agent_version_id,
-                    "deckVersionId": entry.deck_version_id,
+                    **entry.deck_payload(),
                     **(
                         {"clientSeatId": entry.client_seat_id}
                         if entry.client_seat_id is not None

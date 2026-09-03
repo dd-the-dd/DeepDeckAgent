@@ -144,15 +144,17 @@ runner = AgentRunner(agent=MyFirstAgent(), config=config, target=target)
 
 asyncio.run(runner.serve_matchmaking(MatchmakingEntry(
     competition_version_id="competition-uuid",
-    agent_version_id="your-agent-version-uuid",
-    deck_version_id="your-deck-version-uuid",
+    deck_version_ids=("deck-version-a", "deck-version-b", "deck-version-c"),
 )))
 ```
 
 The SDK derives the public WebSocket URL from `DEEPDECK_PLATFORM_URL`. Never substitute
 the engine's global secret. `serve_matchmaking()` keeps the process connected in the
 background, enters the queue only after registering the runner, and queues again after
-every match. Pass `continuous=False` to play only once. The security contract is documented in
+every match. The runner advertises every deck the agent is ready to play; the League
+chooses the concrete deck while forming each match from its Agent×Deck Plackett–Luce
+ratings. A single `deck_version_id` remains supported for a fixed-deck entry. Pass
+`continuous=False` to play only once. The security contract is documented in
 [`docs/authentication.md`](docs/authentication.md).
 
 ## Baselines, Alexios, and deep learning
