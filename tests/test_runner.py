@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import httpx
 import pytest
 
 from deepdeck_agent import (
@@ -156,6 +157,53 @@ async def test_join_matchmaking_advertises_the_full_eligible_deck_pool(monkeypat
 def test_matchmaking_entry_requires_at_least_one_deck() -> None:
     with pytest.raises(ValueError, match="at least one eligible deck"):
         MatchmakingEntry("competition").deck_payload()
+
+
+async def test_continuous_join_retries_transient_platform_failures(monkeypatch) -> None:
+    subject = runner()
+    attempts = 0
+
+    async def join_matchmaking(entry: MatchmakingEntry) -> dict[str, Any]:
+        nonlocal attempts
+        assert entry.deck_version_id == "deck-version"
+        attempts += 1
+        if attempts == 1:
+            request = httpx.Request("POST", "https://example.test/matchmaking/tickets")
+            response = httpx.Response(503, request=request)
+            raise httpx.HTTPStatusError("reconnecting", request=request, response=response)
+        return {"id": "ticket", "status": "queued"}
+
+    async def no_delay(seconds: float) -> None:
+        assert seconds == 0.25
+
+    monkeypatch.setattr(subject, "join_matchmaking", join_matchmaking)
+    monkeypatch.setattr("deepdeck_agent.runner.asyncio.sleep", no_delay)
+
+    ticket = await subject.join_matchmaking_with_retry(
+        MatchmakingEntry("competition", "deck-version"),
+        retry_seconds=0.25,
+    )
+
+    assert ticket["id"] == "ticket"
+    assert attempts == 2
+
+
+async def test_continuous_join_does_not_hide_permanent_request_errors(monkeypatch) -> None:
+    subject = runner()
+
+    async def join_matchmaking(entry: MatchmakingEntry) -> dict[str, Any]:
+        del entry
+        request = httpx.Request("POST", "https://example.test/matchmaking/tickets")
+        response = httpx.Response(400, request=request)
+        raise httpx.HTTPStatusError("invalid", request=request, response=response)
+
+    monkeypatch.setattr(subject, "join_matchmaking", join_matchmaking)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await subject.join_matchmaking_with_retry(
+            MatchmakingEntry("competition", "deck-version"),
+            retry_seconds=0,
+        )
 
 
 async def test_serve_matchmaking_requeues_after_match_completion(monkeypatch) -> None:
