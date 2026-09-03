@@ -176,6 +176,30 @@ class AgentRunner:
             payload = cast(dict[str, Any], response.json())
             return cast(dict[str, Any], payload.get("data", payload))
 
+    async def join_matchmaking_with_retry(
+        self,
+        entry: MatchmakingEntry,
+        *,
+        retry_seconds: float = 2.0,
+    ) -> dict[str, Any]:
+        """Join once the public runner is reachable again.
+
+        Continuous processes can briefly outlive a platform WebSocket revision or a
+        network interruption. Only transport failures, rate limits, and server errors
+        are retried; permanent request/authentication errors remain visible immediately.
+        """
+
+        while True:
+            try:
+                return await self.join_matchmaking(entry)
+            except httpx.HTTPStatusError as error:
+                status = error.response.status_code
+                if status < 500 and status not in {408, 425, 429}:
+                    raise
+            except httpx.TransportError:
+                pass
+            await asyncio.sleep(retry_seconds)
+
     async def get_matchmaking_ticket(self, ticket_id: str) -> dict[str, Any]:
         if self.target.kind != "deepdeckleague" or self.target.platform_url is None:
             raise ValueError("get_matchmaking_ticket requires ServerTarget.deepdeckleague()")
@@ -261,7 +285,11 @@ class AgentRunner:
             await asyncio.sleep(0)
             await self.wait_until_connected(timeout=connection_timeout)
             while True:
-                self.matchmaking_ticket = await self.join_matchmaking(entry)
+                self.matchmaking_ticket = await (
+                    self.join_matchmaking_with_retry(entry, retry_seconds=retry_seconds)
+                    if continuous
+                    else self.join_matchmaking(entry)
+                )
                 match_id = await self._wait_for_match_id(
                     self.matchmaking_ticket,
                     poll_seconds,
