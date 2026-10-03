@@ -209,7 +209,9 @@ The bridge publishes a contract, live state, and JSON Lines metrics. DeepDeckLea
 writes requested controls to the same workspace; the trainer reads them with
 `bridge.requested_control()`, validates them against its own science, and decides when
 they can safely take effect. No model architecture or PyTorch dependency is imposed by
-the SDK contract.
+the SDK contract. Metric steps are monotonic within each phase, so a later phase can use
+its own step counter. Parameter keys are unique across the complete contract because
+DeepDeckLearner persists parameter values by key.
 
 ## Baselines, Alexios, and deep learning
 

@@ -96,3 +96,74 @@ def test_training_bridge_rejects_unknown_metrics(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="unknown metrics"):
         bridge.report_metrics(phase="self-play", step=1, metrics={"mystery": 1.0})
+
+
+def test_training_contract_rejects_values_the_learner_cannot_render() -> None:
+    with pytest.raises(ValueError, match="metric kind"):
+        TrainingMetric(key="loss", label="Loss", kind="histogram")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="default cannot exceed maximum"):
+        TrainingParameter(
+            key="rollout_games",
+            label="Games per update",
+            kind="integer",
+            default=65,
+            maximum=64,
+        )
+    with pytest.raises(ValueError, match="default must be one of"):
+        TrainingParameter(
+            key="device",
+            label="Device",
+            kind="choice",
+            default="tpu",
+            choices=("cpu", "cuda"),
+        )
+
+
+def test_training_parameter_keys_are_unique_across_phases() -> None:
+    shared = TrainingParameter(
+        key="seed",
+        label="Seed",
+        kind="integer",
+        default=1,
+    )
+
+    with pytest.raises(ValueError, match="unique across phases"):
+        TrainingContract(
+            agent_id="org.example.agent",
+            phases=(
+                TrainingPhase("first", "First", parameters=(shared,)),
+                TrainingPhase("second", "Second", parameters=(shared,)),
+            ),
+        )
+
+
+def test_training_bridge_tracks_metric_steps_per_phase(tmp_path) -> None:
+    multi_phase = TrainingContract(
+        agent_id="org.example.agent",
+        phases=(
+            TrainingPhase(
+                "first",
+                "First",
+                metrics=(TrainingMetric("score", "Score"),),
+            ),
+            TrainingPhase(
+                "second",
+                "Second",
+                metrics=(TrainingMetric("score", "Score"),),
+            ),
+        ),
+    )
+    bridge = TrainingBridge(tmp_path, multi_phase)
+
+    bridge.report_metrics(phase="first", step=10, metrics={"score": 1.0})
+    bridge.report_metrics(phase="second", step=1, metrics={"score": 2.0})
+    with pytest.raises(ValueError, match="within phase first"):
+        bridge.report_metrics(phase="first", step=9, metrics={"score": 3.0})
+
+
+@pytest.mark.parametrize("value", [True, float("nan"), float("inf")])
+def test_training_bridge_rejects_non_json_metric_values(tmp_path, value) -> None:
+    bridge = TrainingBridge(tmp_path, contract())
+
+    with pytest.raises(ValueError, match="finite numbers"):
+        bridge.report_metrics(phase="self-play", step=1, metrics={"policy_loss": value})
