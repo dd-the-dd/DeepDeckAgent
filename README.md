@@ -157,6 +157,60 @@ ratings. A single `deck_version_id` remains supported for a fixed-deck entry. Pa
 `continuous=False` to play only once. The security contract is documented in
 [`docs/authentication.md`](docs/authentication.md).
 
+## Expose training to DeepDeckLearner
+
+An agent can remain the owner of its training science while exposing a versioned,
+model-independent cockpit to DeepDeckLearner:
+
+```python
+from pathlib import Path
+
+from deepdeck_agent import (
+    TrainingBridge,
+    TrainingContract,
+    TrainingMetric,
+    TrainingParameter,
+    TrainingPhase,
+)
+
+contract = TrainingContract(
+    agent_id="org.example.legacy-agent",
+    phases=(TrainingPhase(
+        phase_id="self-play",
+        label="Legacy Engine self-play",
+        metrics=(TrainingMetric(
+            key="engine_win_rate",
+            label="Engine win rate",
+            kind="rate",
+            direction="maximize",
+            description="Fixed-seed win rate against the frozen baseline.",
+        ),),
+        parameters=(TrainingParameter(
+            key="rollout_games",
+            label="Games per update",
+            kind="integer",
+            default=2,
+            minimum=1,
+            maximum=64,
+        ),),
+    ),),
+)
+bridge = TrainingBridge(Path(".deepdeck/runs/my-agent"), contract)
+bridge.report_state(phase="self-play", status="running", step=12)
+bridge.report_metrics(
+    phase="self-play",
+    step=12,
+    metrics={"engine_win_rate": 0.58},
+    context={"games": 200},
+)
+```
+
+The bridge publishes a contract, live state, and JSON Lines metrics. DeepDeckLearner
+writes requested controls to the same workspace; the trainer reads them with
+`bridge.requested_control()`, validates them against its own science, and decides when
+they can safely take effect. No model architecture or PyTorch dependency is imposed by
+the SDK contract.
+
 ## Baselines, Alexios, and deep learning
 
 The companion

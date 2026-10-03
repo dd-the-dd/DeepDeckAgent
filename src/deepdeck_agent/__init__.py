@@ -6,6 +6,13 @@ from .events import Event, EventReader
 from .protocol import DecisionResponse, GameSharing, ObservationStream, TimeoutCategory
 from .random_agent import RandomAgent
 from .runner import AgentRunner, LocalGame, LocalPlayer, MatchmakingEntry
+from .training import (
+    TrainingBridge,
+    TrainingContract,
+    TrainingMetric,
+    TrainingParameter,
+    TrainingPhase,
+)
 from .views import Card, Game, Player
 
 __all__ = [
@@ -32,4 +39,9 @@ __all__ = [
     "RandomAgent",
     "ServerTarget",
     "TimeoutCategory",
+    "TrainingBridge",
+    "TrainingContract",
+    "TrainingMetric",
+    "TrainingParameter",
+    "TrainingPhase",
 ]
