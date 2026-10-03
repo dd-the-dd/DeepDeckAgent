@@ -151,6 +151,17 @@ class ObservationDelta(ProtocolModel):
     patch: dict[str, Any]
 
 
+class DecisionClock(ProtocolModel):
+    """Optional game-clock budget; the Engine remains authoritative."""
+
+    remaining_ms: int = Field(ge=0)
+    increment_ms: int = Field(default=0, ge=0)
+    increment_policy: Literal["none", "per-turn", "meaningful-decision"] = "none"
+    soft_deadline_unix_ms: int | None = None
+    hard_deadline_unix_ms: int
+    reserve_ms: int = Field(default=0, ge=0)
+
+
 class DecisionRequest(ProtocolModel):
     type: Literal["decisionRequested"]
     schema_version: Literal["mtg-agent/v1"]
@@ -159,6 +170,7 @@ class DecisionRequest(ProtocolModel):
     context_id: str
     player_id: str
     deadline_unix_ms: int
+    clock: DecisionClock | None = None
     observation_update: FullObservation | ObservationDelta = Field(discriminator="kind")
     decision: dict[str, Any]
     observation: dict[str, Any] = Field(default_factory=dict, exclude=True)
