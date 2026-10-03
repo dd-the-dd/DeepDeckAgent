@@ -41,6 +41,7 @@ class GameSharing(str, Enum):
 
 class AgentAuthor(ProtocolModel):
     name: str = Field(min_length=1)
+    orcid: str | None = None
     url: str | None = None
 
 
@@ -48,6 +49,17 @@ class AgentRepository(ProtocolModel):
     url: str = Field(min_length=1)
     commit: str | None = None
     license: str | None = None
+
+
+class ScientificPublication(ProtocolModel):
+    title: str = Field(min_length=1)
+    authors: list[str] = Field(default_factory=list)
+    venue: str | None = None
+    year: int | None = Field(default=None, ge=1900, le=3000)
+    doi: str | None = None
+    arxiv: str | None = None
+    url: str | None = None
+    citation: str | None = None
 
 
 class DeckSelection(ProtocolModel):
@@ -95,6 +107,7 @@ class AgentManifest(ProtocolModel):
     ] = "other"
     authors: list[AgentAuthor] = Field(min_length=1)
     repository: AgentRepository | None = None
+    publications: list[ScientificPublication] = Field(default_factory=list)
     compatibility: AgentCompatibility
     capabilities: AgentCapabilities = Field(default_factory=AgentCapabilities)
 

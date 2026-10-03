@@ -157,6 +157,9 @@ ratings. A single `deck_version_id` remains supported for a fixed-deck entry. Pa
 `continuous=False` to play only once. The security contract is documented in
 [`docs/authentication.md`](docs/authentication.md).
 
+The complete registration metadata contract, serialization mode, and strict unknown-field
+policy are documented in [`docs/agent-manifest.md`](docs/agent-manifest.md).
+
 ## Expose training to DeepDeckLearner
 
 An agent can remain the owner of its training science while exposing a versioned,
