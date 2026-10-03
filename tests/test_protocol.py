@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from deepdeck_agent.protocol import AgentManifest
+from deepdeck_agent.protocol import AgentManifest, DecisionRequest
 
 FIXTURE = Path(__file__).parent / "fixtures" / "agent_manifest_v1_maximal.json"
 
@@ -41,3 +41,35 @@ def test_manifest_rejects_unknown_fields_at_every_protocol_level(
 
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
         AgentManifest.model_validate(payload)
+
+
+def test_decision_request_accepts_engine_authoritative_clock() -> None:
+    request = DecisionRequest.model_validate(
+        {
+            "type": "decisionRequested",
+            "schemaVersion": "mtg-agent/v1",
+            "observationSchemaVersion": "mtg-player-observation/v1",
+            "requestId": "decision-1",
+            "contextId": "game-1",
+            "playerId": "player-1",
+            "deadlineUnixMs": 12_000,
+            "clock": {
+                "remainingMs": 60_000,
+                "incrementMs": 1_000,
+                "incrementPolicy": "per-turn",
+                "delayMs": 250,
+                "reserveMs": 5_000,
+                "softDeadlineUnixMs": 11_500,
+                "hardDeadlineUnixMs": 12_000,
+            },
+            "observationUpdate": {
+                "kind": "fullObservation",
+                "sequence": 1,
+                "observation": {},
+            },
+            "decision": {"id": "decision-1", "options": []},
+        }
+    )
+
+    assert request.clock is not None
+    assert request.clock.delay_ms == 250

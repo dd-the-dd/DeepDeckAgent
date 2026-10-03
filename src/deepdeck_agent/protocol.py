@@ -157,6 +157,7 @@ class DecisionClock(ProtocolModel):
     remaining_ms: int = Field(ge=0)
     increment_ms: int = Field(default=0, ge=0)
     increment_policy: Literal["none", "per-turn", "meaningful-decision"] = "none"
+    delay_ms: int = Field(default=0, ge=0)
     soft_deadline_unix_ms: int | None = None
     hard_deadline_unix_ms: int
     reserve_ms: int = Field(default=0, ge=0)
