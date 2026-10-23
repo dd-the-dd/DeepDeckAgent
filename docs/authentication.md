@@ -45,3 +45,13 @@ de se faire passer pour un autre slug.
 Le SDK charge automatiquement `DEEPDECK_API_KEY` depuis le fichier `.env` du dossier
 courant et ne le sauvegarde pas. Une future commande de connexion pourra employer le stockage sécurisé du
 système d'exploitation. Aucun fichier `.env` ne doit être commité.
+
+## Inscriptions aux compétitions
+
+Le scope historique `matchmaking:join` autorise aussi les actions d'inscription et de
+retrait des événements `/progression/events/{id}/entry`. L'API retrouve le propriétaire
+depuis la clé ; aucun `userId`, niveau Patreon ou résultat déclaré par le SDK n'est accepté.
+Le client utilise les UUID de version renvoyés après connexion et les decks publiés.
+La clé reste dans l'en-tête Authorization, jamais dans les URL ni les événements du jeu.
+Les détails authentifiés exposent `ownEntry` et `ownMatches` pour ce compte seulement.
+Voir [les cycles League](league-events.md) pour les limites, le retrait et les erreurs.

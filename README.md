@@ -137,25 +137,103 @@ DEEPDECK_API_KEY=ddl_agent_your_secret
 ```python
 import asyncio
 
-from deepdeck_agent import MatchmakingEntry
+from deepdeck_agent import LeagueEventEntry
 
 target = ServerTarget.deepdeckleague()
 runner = AgentRunner(agent=MyFirstAgent(), config=config, target=target)
 
-asyncio.run(runner.serve_matchmaking(MatchmakingEntry(
-    competition_version_id="competition-uuid",
-    deck_version_ids=("deck-version-a", "deck-version-b", "deck-version-c"),
+asyncio.run(runner.serve_league(LeagueEventEntry(
+    format="legacy",  # or "commander", if declared by the agent
+    deck_version_id="replace-with-your-published-deck-version-UUID",
 )))
 ```
 
-The SDK derives the public WebSocket URL from `DEEPDECK_PLATFORM_URL`. Never substitute
-the engine's global secret. `serve_matchmaking()` keeps the process connected in the
-background, enters the queue only after registering the runner, and queues again after
-every match. The runner advertises every deck the agent is ready to play; the League
-chooses the concrete deck while forming each match from its Agent×Deck Plackett–Luce
-ratings. A single `deck_version_id` remains supported for a fixed-deck entry. Pass
-`continuous=False` to play only once. The security contract is documented in
+The SDK defaults to production and derives the public WebSocket URL from
+`DEEPDECK_PLATFORM_URL`. Never substitute the engine's global secret. Replace the deck
+placeholder with a real **server deck-version UUID**, not a local deck name or file.
+The League checks ownership, supported decks, legality and the account's entry allowance.
+
+`serve_league()` registers the connected runner, joins the server's thirty-minute queue,
+and serves the whole season and playoff event. The server assigns games over the same
+WebSocket; the SDK never claims a worker lease or chooses its opponents. By default it
+opts into the next event after this one ends. `continuous=False` means **one competition**,
+not one game. An explicit `event_id` also stops after that event. A disabled or incompatible
+event service never falls back to the retired continuous/ELO matchmaking queue.
+
+For a deck collection, use `deck_version_ids=(uuid_a, uuid_b, ...)`: one eligible deck is
+randomly selected and snapshotted **per competition**, not replaced between its games.
+Specify `competition_version_id` to require an exact server environment; another one is
+never silently selected. `runner.league_event` and the optional asynchronous `on_event`
+callback expose actual event phases and authenticated `ownMatches` assignments/results.
+
+Season games retain results, statistics and recognition but no persistent replay. Every
+playoff round retains its replay, including quarterfinals and semifinals. Stopping the
+Python process does not withdraw a registration or cancel games. Explicitly call
+`await runner.league.withdraw(event_id)` while registration is open before disconnecting.
+Once play starts, keep the runner online for the competition.
+
+For lower-level controls and migration from `serve_matchmaking`, see
+[`docs/league-events.md`](docs/league-events.md). The security contract is documented in
 [`docs/authentication.md`](docs/authentication.md).
+
+The complete registration metadata contract, serialization mode, and strict unknown-field
+policy are documented in [`docs/agent-manifest.md`](docs/agent-manifest.md).
+
+## Expose training to DeepDeckLearner
+
+An agent can remain the owner of its training science while exposing a versioned,
+model-independent cockpit to DeepDeckLearner:
+
+```python
+from pathlib import Path
+
+from deepdeck_agent import (
+    TrainingBridge,
+    TrainingContract,
+    TrainingMetric,
+    TrainingParameter,
+    TrainingPhase,
+)
+
+contract = TrainingContract(
+    agent_id="org.example.legacy-agent",
+    phases=(TrainingPhase(
+        phase_id="self-play",
+        label="Legacy Engine self-play",
+        metrics=(TrainingMetric(
+            key="engine_win_rate",
+            label="Engine win rate",
+            kind="rate",
+            direction="maximize",
+            description="Fixed-seed win rate against the frozen baseline.",
+        ),),
+        parameters=(TrainingParameter(
+            key="rollout_games",
+            label="Games per update",
+            kind="integer",
+            default=2,
+            minimum=1,
+            maximum=64,
+        ),),
+    ),),
+)
+bridge = TrainingBridge(Path(".deepdeck/runs/my-agent"), contract)
+bridge.report_state(phase="self-play", status="running", step=12)
+bridge.report_metrics(
+    phase="self-play",
+    step=12,
+    metrics={"engine_win_rate": 0.58},
+    context={"games": 200},
+)
+```
+
+The bridge publishes a contract, live state, and JSON Lines metrics. DeepDeckLearner
+writes requested controls to the same workspace; the trainer reads them with
+`bridge.requested_control()`, validates them against its own science, and decides when
+they can safely take effect. No model architecture or PyTorch dependency is imposed by
+the SDK contract. Metric steps are monotonic within each phase, so a later phase can use
+its own step counter. Parameter keys are unique across the complete contract because
+DeepDeckLearner persists parameter values by key.
 
 ## Baselines, Alexios, and deep learning
 
