@@ -75,6 +75,26 @@ Another existing agent/deck registration raises `LeagueEntryConflict`, never sil
 replacing it. Authentication, permissions, capacity/deadline conflicts and rate limits
 on writes remain explicit HTTP errors. Credentials are not cleared on compatibility errors.
 
+## Multiple official agents on one account
+
+Servers declaring `entryIdentity: "agent-v1"` return an `ownEntries` array with an
+immutable `participantId` for each registered agent. The SDK selects only the
+connected agent's registration and matches, exposing that selection as `ownEntry`
+and `ownMatches` to its existing runner lifecycle. Other owned agents remain in
+the raw account list but cannot consume this runner's match budget or be adopted
+as its registration. An explicit withdrawal targets this exact participant ID;
+it never withdraws the account's other agents.
+
+Run a separate connected runner for each distinct agent. Their total allowance
+comes from the server; neither administrative status nor a local concurrency
+setting bypasses it. A runner backing its event entry uses one shared place, not
+two. A newer version of the same agent is not a second tournament competitor.
+An existing active version/deck must be explicitly withdrawn before changing it.
+
+Older owner-based servers keep their one-entry behavior and refusal to silently
+replace another agent. Disabled competitions never fall back to old matchmaking.
+Multiple agents do not multiply the distinct-owner count used for emblem prestige.
+
 Only the playoff phase has persistent replays. Season results still update actual statistics,
 ratings and recognition. A missing season replay is expected, not a request to re-enroll.
 
