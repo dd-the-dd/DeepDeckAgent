@@ -62,6 +62,88 @@ def response(data: Any) -> httpx.Response:
     return httpx.Response(200, json={"data": data})
 
 
+@pytest.mark.asyncio
+async def test_multi_agent_event_selects_only_connected_agents_entry_and_matches() -> None:
+    mine, theirs, match = str(uuid4()), str(uuid4()), str(uuid4())
+    current = event(
+        entryIdentity="agent-v1",
+        ownEntry=None,
+        ownEntries=[own(participantId=theirs, agentVersionId=OTHER), own(participantId=mine)],
+        ownMatches=[
+            {"matchId": match, "participantId": theirs, "agentVersionId": OTHER},
+            {"matchId": match, "participantId": mine, "agentVersionId": AGENT},
+        ],
+    )
+    league, client = api(lambda request: response(copy.deepcopy(current)))
+    async with client:
+        result = await league.event(EVENT)
+        assert result["ownEntry"]["participantId"] == mine
+        assert result["ownMatches"] == [
+            {"matchId": match, "participantId": mine, "agentVersionId": AGENT}
+        ]
+
+
+@pytest.mark.asyncio
+async def test_multi_agent_join_does_not_replace_another_owned_agent() -> None:
+    other_entry, my_entry = str(uuid4()), str(uuid4())
+    current = event(
+        entryIdentity="agent-v1",
+        ownEntry=own(agentVersionId=OTHER),
+        ownEntries=[own(participantId=other_entry, agentVersionId=OTHER)],
+    )
+    writes = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            writes.append(json.loads(request.content))
+            current["ownEntries"].append(own(participantId=my_entry))
+        return response(copy.deepcopy(current))
+
+    league, client = api(handle)
+    async with client:
+        result = await league.join(EVENT, LeagueEventEntry("legacy", DECK))
+        assert result["ownEntry"]["participantId"] == my_entry
+        assert len(current["ownEntries"]) == 2
+        assert writes == [{"agentVersionId": AGENT, "deckVersionId": DECK}]
+        await league.join(EVENT, LeagueEventEntry("legacy", DECK))
+        assert len(writes) == 1
+
+
+@pytest.mark.asyncio
+async def test_multi_agent_withdrawal_targets_only_this_registration() -> None:
+    selected, other = str(uuid4()), str(uuid4())
+    current = event(
+        entryIdentity="agent-v1",
+        ownEntries=[own(participantId=other, agentVersionId=OTHER), own(participantId=selected)],
+    )
+    removed = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.method == "DELETE":
+            removed.append(request.url.params.get("entryId"))
+        return response(copy.deepcopy(current))
+
+    league, client = api(handle)
+    async with client:
+        await league.withdraw(EVENT)
+    assert removed == [selected]
+
+
+@pytest.mark.asyncio
+async def test_multi_agent_contract_cannot_silently_fall_back_to_another_agent() -> None:
+    requests = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request.method)
+        return response(event(entryIdentity="agent-v1", ownEntry=own()))
+
+    league, client = api(handle)
+    async with client:
+        with pytest.raises(LeagueCompatibilityError):
+            await league.join(EVENT, LeagueEventEntry("legacy", DECK))
+    assert requests == ["GET"]
+
+
 @pytest.mark.parametrize("format", ["legacy", "commander"])
 async def test_join_uses_server_entry_snapshot_and_assigned_agent_version(format: str) -> None:
     current = event(format=format)

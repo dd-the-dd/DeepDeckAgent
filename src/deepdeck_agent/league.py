@@ -133,6 +133,23 @@ def _event(data: dict[str, Any]) -> dict[str, Any]:
             return _invalid("own entry")
         _uuid(own.get("agentVersionId"), "registered agent version ID")
         _uuid(own.get("deckVersionId"), "registered deck version ID")
+    identity = data.get("entryIdentity")
+    if identity not in {None, "owner-v1", "agent-v1"}:
+        return _invalid("registration identity policy")
+    if identity == "agent-v1":
+        entries = data.get("ownEntries")
+        if not isinstance(entries, list) or len(entries) > 64:
+            return _invalid("owned agent registrations")
+        seen: set[str] = set()
+        for registered in entries:
+            if not isinstance(registered, dict):
+                return _invalid("owned agent registration")
+            entry_id = _uuid(registered.get("participantId"), "registration ID")
+            _uuid(registered.get("agentVersionId"), "registered agent version ID")
+            _uuid(registered.get("deckVersionId"), "registered deck version ID")
+            if entry_id in seen:
+                return _invalid("duplicate registration ID")
+            seen.add(entry_id)
     if "ownMatches" in data:
         matches = data["ownMatches"]
         if not isinstance(matches, list):
@@ -141,6 +158,9 @@ def _event(data: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(match, dict):
                 return _invalid("assigned match")
             _uuid(match.get("matchId"), "assigned match ID")
+            if identity == "agent-v1":
+                _uuid(match.get("participantId"), "assigned registration ID")
+                _uuid(match.get("agentVersionId"), "assigned agent version ID")
     return data
 
 
@@ -215,6 +235,26 @@ class LeagueClient:
         result = _event(await self._request("GET", f"/progression/events/{expected}"))
         if _uuid(result["id"], "event ID") != expected:
             return _invalid("event identity")
+        if result.get("entryIdentity") == "agent-v1":
+            # Expose only this connected agent to the runner's existing lifecycle.
+            # Another owned agent must never replace it or consume its budget.
+            owned = [
+                item
+                for item in result["ownEntries"]
+                if item["agentVersionId"] == self.agent_version_id
+            ]
+            if len(owned) > 1:
+                return _invalid("duplicate agent registration")
+            own = owned[0] if owned else None
+            result = dict(result)
+            result["ownEntry"] = own
+            result["ownMatches"] = [
+                item
+                for item in result.get("ownMatches", [])
+                if own is not None
+                and item["participantId"] == own["participantId"]
+                and item["agentVersionId"] == self.agent_version_id
+            ]
         return result
 
     async def entry_options(self, event_id: str) -> dict[str, Any]:
@@ -346,6 +386,15 @@ class LeagueClient:
 
     async def withdraw(self, event_id: str) -> dict[str, Any]:
         """Explicit owner action, registration only. Never cancels a running match."""
+        event = await self.event(event_id)
+        suffix = ""
+        if event.get("entryIdentity") == "agent-v1":
+            own = event.get("ownEntry")
+            if not isinstance(own, dict) or own.get("withdrawnAt") is not None:
+                raise LeagueEntryConflict(
+                    "This connected agent has no active registration to withdraw."
+                )
+            suffix = "?entryId=" + _uuid(own.get("participantId"), "registration ID")
         return await self._request(
-            "DELETE", f"/progression/events/{_uuid(event_id, 'event ID')}/entry"
+            "DELETE", f"/progression/events/{_uuid(event_id, 'event ID')}/entry{suffix}"
         )
