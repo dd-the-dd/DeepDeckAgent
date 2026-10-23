@@ -144,8 +144,8 @@ class ServerTarget:
     agent_url: str
     engine_http_url: str | None = None
     platform_url: str | None = None
-    engine_api_key: str | None = None
-    account_token: str | None = None
+    engine_api_key: str | None = field(default=None, repr=False)
+    account_token: str | None = field(default=None, repr=False)
 
     @classmethod
     def local(
@@ -178,7 +178,7 @@ class ServerTarget:
         resolved_platform_url = (
             platform_url
             or os.getenv("DEEPDECK_PLATFORM_URL")
-            or "https://staging.deepdeckleague.com/api/v1"
+            or "https://www.deepdeckleague.com/api/v1"
         ).rstrip("/")
         resolved_agent_url = agent_url or os.getenv("DEEPDECK_AGENT_URL", "").strip()
         if not resolved_agent_url:

@@ -41,6 +41,7 @@ class GameSharing(str, Enum):
 
 class AgentAuthor(ProtocolModel):
     name: str = Field(min_length=1)
+    orcid: str | None = None
     url: str | None = None
 
 
@@ -48,6 +49,17 @@ class AgentRepository(ProtocolModel):
     url: str = Field(min_length=1)
     commit: str | None = None
     license: str | None = None
+
+
+class ScientificPublication(ProtocolModel):
+    title: str = Field(min_length=1)
+    authors: list[str] = Field(default_factory=list)
+    venue: str | None = None
+    year: int | None = Field(default=None, ge=1900, le=3000)
+    doi: str | None = None
+    arxiv: str | None = None
+    url: str | None = None
+    citation: str | None = None
 
 
 class DeckSelection(ProtocolModel):
@@ -95,6 +107,7 @@ class AgentManifest(ProtocolModel):
     ] = "other"
     authors: list[AgentAuthor] = Field(min_length=1)
     repository: AgentRepository | None = None
+    publications: list[ScientificPublication] = Field(default_factory=list)
     compatibility: AgentCompatibility
     capabilities: AgentCapabilities = Field(default_factory=AgentCapabilities)
 
@@ -138,6 +151,18 @@ class ObservationDelta(ProtocolModel):
     patch: dict[str, Any]
 
 
+class DecisionClock(ProtocolModel):
+    """Optional game-clock budget; the Engine remains authoritative."""
+
+    remaining_ms: int = Field(ge=0)
+    increment_ms: int = Field(default=0, ge=0)
+    increment_policy: Literal["none", "per-turn", "meaningful-decision"] = "none"
+    delay_ms: int = Field(default=0, ge=0)
+    soft_deadline_unix_ms: int | None = None
+    hard_deadline_unix_ms: int
+    reserve_ms: int = Field(default=0, ge=0)
+
+
 class DecisionRequest(ProtocolModel):
     type: Literal["decisionRequested"]
     schema_version: Literal["mtg-agent/v1"]
@@ -146,6 +171,7 @@ class DecisionRequest(ProtocolModel):
     context_id: str
     player_id: str
     deadline_unix_ms: int
+    clock: DecisionClock | None = None
     observation_update: FullObservation | ObservationDelta = Field(discriminator="kind")
     decision: dict[str, Any]
     observation: dict[str, Any] = Field(default_factory=dict, exclude=True)

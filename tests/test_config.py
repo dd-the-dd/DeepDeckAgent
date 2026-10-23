@@ -51,9 +51,7 @@ def test_runner_controller_id_is_stable_before_connection() -> None:
 def test_public_target_derives_runner_url_and_reads_the_agent_key(monkeypatch) -> None:
     monkeypatch.setenv("DEEPDECK_API_KEY", "ddl_agent_example")
     monkeypatch.delenv("DEEPDECK_AGENT_URL", raising=False)
-    target = ServerTarget.deepdeckleague(
-        platform_url="https://staging.deepdeckleague.com/api/v1/"
-    )
+    target = ServerTarget.deepdeckleague(platform_url="https://staging.deepdeckleague.com/api/v1/")
     assert target.agent_url == "wss://staging.deepdeckleague.com/api/v1/agents/connect"
     assert target.account_token == "ddl_agent_example"
 
@@ -70,3 +68,23 @@ def test_public_target_loads_agent_key_from_dotenv(monkeypatch, tmp_path) -> Non
     target = ServerTarget.deepdeckleague()
 
     assert target.account_token == "ddl_agent_from_dotenv"
+
+
+def test_public_target_defaults_to_production_not_staging(monkeypatch) -> None:
+    monkeypatch.setattr("deepdeck_agent.config._load_working_directory_dotenv", lambda: None)
+    monkeypatch.delenv("DEEPDECK_PLATFORM_URL", raising=False)
+    monkeypatch.delenv("DEEPDECK_AGENT_URL", raising=False)
+    target = ServerTarget.deepdeckleague(api_key="ddl_agent_isolated_test")
+    assert target.platform_url == "https://www.deepdeckleague.com/api/v1"
+    assert target.agent_url == "wss://www.deepdeckleague.com/api/v1/agents/connect"
+
+
+def test_target_repr_does_not_expose_account_or_engine_credentials() -> None:
+    target = ServerTarget(
+        "deepdeckleague",
+        "wss://example.test/agents",
+        engine_api_key="engine_secret_not_for_logs",
+        account_token="ddl_agent_secret_not_for_logs",
+    )
+    assert "engine_secret" not in repr(target)
+    assert "ddl_agent_secret" not in repr(target)

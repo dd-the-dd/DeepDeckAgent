@@ -124,7 +124,10 @@ class AgentClient:
         else:
             observation = replica.apply(update.sequence, update.previous_sequence, update.patch)
         game = await self._notify_state(request.context_id, request.player_id, observation)
-        decision = Decision(request.request_id, request.player_id, request.decision, game)
+        decision_payload = dict(request.decision)
+        if request.clock is not None:
+            decision_payload["clock"] = request.clock.model_dump(by_alias=True, exclude_none=True)
+        decision = Decision(request.request_id, request.player_id, decision_payload, game)
         remaining = max(0.001, request.deadline_unix_ms / 1000 - time.time())
         response = await asyncio.wait_for(self.agent.make_decision(decision), timeout=remaining)
         if not isinstance(response, DecisionResponse):

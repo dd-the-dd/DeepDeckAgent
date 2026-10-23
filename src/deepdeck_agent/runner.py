@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any, cast
 
 import httpx
@@ -10,6 +12,7 @@ import httpx
 from .agent import Agent
 from .client import AgentClient
 from .config import AgentConfig, PlaySpeed, ServerTarget
+from .league import LeagueClient, LeagueEventEntry
 
 
 @dataclass(frozen=True)
@@ -87,6 +90,7 @@ class AgentRunner:
     speed: PlaySpeed | None = None
     client: AgentClient = field(init=False)
     matchmaking_ticket: dict[str, Any] | None = field(init=False, default=None)
+    league_event: dict[str, Any] | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         selected_speed = self.speed or self.config.speeds[0]
@@ -118,6 +122,87 @@ class AgentRunner:
         registration = self.client.registration
         return registration.agent_version_id if registration else None
 
+    @property
+    def league(self) -> LeagueClient:
+        """Account REST API; the existing WebSocket still receives assignments."""
+        return LeagueClient(self.target, agent_version_id=self.agent_version_id)
+
+    async def serve_league(
+        self,
+        entry: LeagueEventEntry,
+        *,
+        retry_seconds: float = 2.0,
+        connection_timeout: float = 30.0,
+        continuous: bool = True,
+        poll_seconds: float = 10.0,
+        on_event: Callable[[dict[str, Any] | None], Awaitable[None]] | None = None,
+    ) -> None:
+        """Serve a whole season/playoff event, optionally joining its next cycle.
+
+        ``continuous=False`` means one competition, not one subgame. The server
+        decides tables, byes, qualifiers and results. No retired matchmaking
+        ticket is created. Cancelling this task does not withdraw an entry or
+        cancel games: call ``runner.league.withdraw(id)`` explicitly while its
+        registration is still open before stopping the connected runner.
+        """
+        if self.target.kind != "deepdeckleague":
+            raise ValueError("serve_league requires ServerTarget.deepdeckleague().")
+        if entry.format not in self.config.formats:
+            raise ValueError("This agent manifest does not support the selected format.")
+        if retry_seconds < 0 or poll_seconds < 0:
+            raise ValueError("League retry and polling intervals cannot be negative.")
+        connection = asyncio.create_task(self.serve(retry_seconds=retry_seconds))
+
+        async def read(operation: Callable[[], Awaitable[Any]]) -> Any:
+            while True:
+                try:
+                    return await operation()
+                except httpx.HTTPStatusError as error:
+                    if error.response.status_code < 500 and error.response.status_code not in {
+                        408,
+                        425,
+                        429,
+                    }:
+                        raise
+                except httpx.TransportError:
+                    pass
+                await asyncio.sleep(retry_seconds)
+
+        try:
+            await asyncio.sleep(0)
+            await self.wait_until_connected(timeout=connection_timeout)
+            while True:
+                league = self.league
+                selected = await read(partial(league.find_event, entry))
+                if selected is None:
+                    self.league_event = None
+                    if on_event is not None:
+                        await on_event(None)
+                    await asyncio.sleep(poll_seconds)
+                    continue
+                # Mutations intentionally stay outside the read retry helper.
+                current = await league.join(selected["id"], entry)
+                while True:
+                    self.league_event = current
+                    if on_event is not None:
+                        await on_event(current)
+                    own = current.get("ownEntry")
+                    if own is None or own.get("withdrawnAt") is not None:
+                        return  # honour an explicit withdrawal; do not fight it
+                    if own.get("agentVersionId") != league.agent_version_id:
+                        return  # another explicit owner registration replaced us
+                    if current["phase"] in {"complete", "cancelled"}:
+                        break
+                    await asyncio.sleep(poll_seconds)
+                    current = await read(partial(league.event, selected["id"]))
+                if not continuous or entry.event_id is not None:
+                    return
+                await asyncio.sleep(poll_seconds)
+                await self.wait_until_connected(timeout=connection_timeout)
+        finally:
+            connection.cancel()
+            await asyncio.gather(connection, return_exceptions=True)
+
     async def wait_until_connected(self, *, timeout: float = 10.0) -> str:
         """Wait until the engine confirms registration and return the controller ID."""
 
@@ -134,9 +219,7 @@ class AgentRunner:
         if self.target.kind != "local" or self.target.engine_http_url is None:
             raise ValueError("start_local_game requires ServerTarget.local()")
         headers = (
-            {"x-mtg-api-key": self.target.engine_api_key}
-            if self.target.engine_api_key
-            else None
+            {"x-mtg-api-key": self.target.engine_api_key} if self.target.engine_api_key else None
         )
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
@@ -253,9 +336,7 @@ class AgentRunner:
             match = await self.match(match_id)
             summary = match.get("summary")
             status = str(
-                summary.get("status", "")
-                if isinstance(summary, dict)
-                else match.get("status", "")
+                summary.get("status", "") if isinstance(summary, dict) else match.get("status", "")
             )
             if status in {"complete", "failed", "cancelled"}:
                 return status

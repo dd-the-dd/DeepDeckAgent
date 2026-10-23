@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "agent-manifest/v1",
+  "agentId": "org.example.research-agent",
+  "name": "Research Agent",
+  "version": "2.1.0",
+  "description": "A manifest exercising every agent-manifest/v1 field.",
+  "agentType": "hybrid",
+  "authors": [
+    {
+      "name": "Ada Example",
+      "orcid": "0000-0002-1825-0097",
+      "url": "https://example.org/ada"
+    }
+  ],
+  "repository": {
+    "url": "https://example.org/research-agent.git",
+    "commit": "0123456789abcdef",
+    "license": "MIT"
+  },
+  "publications": [
+    {
+      "title": "Learning to Play",
+      "authors": [
+        "Ada Example",
+        "Grace Example"
+      ],
+      "venue": "Example Conference",
+      "year": 2026,
+      "doi": "10.1000/example",
+      "arxiv": "2601.01234",
+      "url": "https://example.org/paper",
+      "citation": "Example, A. et al. (2026). Learning to Play."
+    }
+  ],
+  "compatibility": {
+    "gameModes": [
+      "legacy",
+      "commander"
+    ],
+    "decks": {
+      "selection": "allow-list",
+      "deckIds": [
+        "deck-version-a",
+        "deck-version-b"
+      ]
+    },
+    "timeControls": [
+      "standard",
+      "offline"
+    ],
+    "observationStreams": [
+      "full-observation-stream",
+      "delta-event-stream"
+    ],
+    "gameSharing": [
+      "research-dataset",
+      "training-dataset"
+    ]
+  },
+  "capabilities": {
+    "startingSituationAnalysis": true,
+    "decisionExploration": true,
+    "statefulMemory": true
+  }
+}
